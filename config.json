@@ -1,0 +1,23 @@
+{
+  "balancer": {
+    "host": "localhost",
+    "port": "80"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8081/",
+      "host": "localhost",
+      "port": "8081"
+    },
+    {
+      "url": "http://localhost:8082/",
+      "host": "localhost",
+      "port": "8082"
+    },
+    {
+      "url": "http://localhost:8083/",
+      "host": "localhost",
+      "port": "8083"
+    }
+  ]
+}

@@ -5,19 +5,18 @@
   },
   "servers": [
     {
-      "url": "http://localhost:8081/",
       "host": "localhost",
-      "port": "8081"
+      "port": "8081",
+      "location": "A",
+      "status": false,
+      "weight": 1
     },
     {
-      "url": "http://localhost:8082/",
       "host": "localhost",
-      "port": "8082"
-    },
-    {
-      "url": "http://localhost:8083/",
-      "host": "localhost",
-      "port": "8083"
+      "port": "8082",
+      "location": "B",
+      "status": false,
+      "weight": 1
     }
   ]
 }

@@ -1,3 +1,5 @@
+const fs = require("node:fs");
+
 class Server {
   constructor(id, host, port, location, status, weight) {
     this.id = id;
@@ -9,4 +11,27 @@ class Server {
     this.weight = weight;
   }
 }
-module.exports = { Server };
+
+function LoadServers(filename) {
+  try {
+    const data = fs.readFileSync(filename, "utf8");
+    const jsonData = JSON.parse(data);
+    const servers = jsonData.servers.map(
+      (server, index) =>
+        new Server(
+          index,
+          server.host,
+          server.port,
+          server.location,
+          server.status,
+          server.weight
+        )
+    );
+    return servers;
+  } catch (err) {
+    console.error("Failed to load servers:", err);
+    throw err;
+  }
+}
+
+module.exports = { Server, LoadServers };

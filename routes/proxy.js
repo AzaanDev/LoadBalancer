@@ -1,31 +1,30 @@
 const express = require("express");
 const { createProxyMiddleware } = require("http-proxy-middleware");
-const { Server } = require("./servers");
+const { LoadServers } = require("../routes/servers");
 
 const router = express.Router();
 
-const servers = [new Server(1, "localhost", 3000, "USA", "active", 1)];
+const servers = LoadServers("./config.json");
 
-const proxyOptions = {
-  target: "",
-  changeOrigin: true,
-  onProxyReq: (proxyReq, req) => {
-    proxyReq.setHeader("X-Special-Proxy-Header", "foobar");
-  },
-  logLevel: "debug",
-};
+console.log(servers);
+
+const proxies = servers.map((server) => {
+  return createProxyMiddleware({
+    target: `http://${server.host}:${server.port}`,
+    changeOrigin: true,
+  });
+});
 
 let currIndex = 0;
 
-function getServer() {
-  currIndex = (currIndex + 1) % servers.length;
-  return servers[currIndex];
+function getNextProxy() {
+  const proxy = proxies[currIndex];
+  currIndex = (currIndex + 1) % proxies.length;
+  return proxy;
 }
 
 router.all("*", (req, res, next) => {
-  const target = getServer();
-  proxyOptions.target = `http://${target.host}:${target.port}`;
-  const proxy = createProxyMiddleware(proxyOptions);
+  const proxy = getNextProxy();
   return proxy(req, res, next);
 });
 

@@ -2,11 +2,14 @@ const http = require("http");
 const express = require("express");
 const cors = require("cors");
 const proxyRouter = require("./routes/proxy");
-const { sequelize, AddVideoServers } = require("./models/database");
+const {
+  sequelize,
+  AddVideoServers,
+  InitVideoDataFromServers,
+} = require("./models/database");
 const apiRoutes = require("./routes/api");
 const { LoadServers } = require("./routes/servers");
 
-const servers = LoadServers("./config.json");
 const app = express();
 app.use(express.json());
 app.use(cors());
@@ -19,7 +22,13 @@ sequelize
   .then(() => {
     console.log("Database synced with Sequelize");
 
-    // AddVideoServers(servers);
+    try {
+      const servers = LoadServers("./config.json");
+      AddVideoServers(servers);
+      InitVideoDataFromServers(servers);
+    } catch (error) {
+      console.error("Failed to sync database:", error);
+    }
 
     const server = http.createServer(app);
     server.listen(80, () => {

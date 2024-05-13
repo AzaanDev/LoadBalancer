@@ -8,14 +8,7 @@
       "host": "localhost",
       "port": "8081",
       "location": "A",
-      "status": false,
-      "weight": 1
-    },
-    {
-      "host": "localhost",
-      "port": "8082",
-      "location": "B",
-      "status": false,
+      "status": true,
       "weight": 1
     }
   ]

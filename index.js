@@ -1,6 +1,7 @@
 const http = require("http");
 const express = require("express");
 const cors = require("cors");
+const bodyParser = require("body-parser");
 const proxyRouter = require("./routes/proxy");
 const {
   sequelize,
@@ -11,7 +12,8 @@ const apiRoutes = require("./routes/api");
 const { LoadServers } = require("./routes/servers");
 
 const app = express();
-app.use(express.json());
+app.use(bodyParser.json());
+
 app.use(cors());
 app.use(express.static("public"));
 app.use("/api", apiRoutes);
@@ -31,7 +33,7 @@ sequelize
     }
 
     const server = http.createServer(app);
-    server.listen(80, () => {
+    server.listen(8000, () => {
       console.log("HTTP server started on port 80");
     });
   })

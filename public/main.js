@@ -10,7 +10,7 @@ document.addEventListener("DOMContentLoaded", function () {
         const item = document.createElement("li");
         item.textContent = `${video.title} - Views: ${video.views}`;
         item.onclick = function () {
-          fetch("/ld/video", {
+          fetch(`/ld/video?title=${encodeURIComponent(video.title)}`, {
             method: "POST",
             headers: {
               "Content-Type": "text",

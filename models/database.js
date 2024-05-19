@@ -1,9 +1,13 @@
 const { Sequelize, Model, DataTypes } = require("sequelize");
+const { Mutex } = require("async-mutex");
 const axios = require("axios");
+
+const mutex = new Mutex();
 
 const sequelize = new Sequelize({
   dialect: "sqlite",
   storage: "./database.sqlite",
+  logging: false,
 });
 
 class Video extends Model {}
@@ -21,7 +25,7 @@ Video.init(
 class VideoService extends Model {}
 VideoService.init(
   {
-    url: {
+    hostname: {
       type: DataTypes.STRING,
       unique: true,
     },
@@ -33,78 +37,52 @@ VideoService.init(
   }
 );
 
-Video.belongsToMany(VideoService, { through: "VideoVideoService" });
-VideoService.belongsToMany(Video, { through: "VideoVideoService" });
+Video.belongsToMany(VideoService, { through: "Video-VideoService" });
+VideoService.belongsToMany(Video, { through: "Video-VideoService" });
 
-function AddVideoServers(servers) {
-  for (const server of servers) {
-    console.log(server);
-    url = "http://" + server.host + ":" + server.port;
-    VideoService.findOrCreate({
-      where: { url: url },
-      defaults: { url: url },
-    })
-      .then(([service, created]) => {
-        if (created) {
-          console.log(`New Video Service Added: ${service.url}`);
-        } else {
-          console.log(`Video Service Already Exists: ${service.url}`);
-        }
-      })
-      .catch((error) => {
-        console.error("Error adding video service:", error);
-      });
+const AddVideoService = async (hostname) => {
+  const release = await mutex.acquire();
+  try {
+    const [service, created] = await VideoService.findOrCreate({
+      where: { hostname },
+    });
+    if (created)
+      console.log("VideoService added with id:", service.id, service.hostname);
+    else
+      console.log("VideoService already exists:", service.id, service.hostname);
+  } catch (error) {
+    console.error("Error adding VideoService:", hostname);
+    throw error;
+  } finally {
+    release();
   }
-}
+};
 
-function InitVideoDataFromServers(servers) {
-  for (const server of servers) {
-    const url = `http://${server.host}:${server.port}`;
+const AddVideo = async (title, video_service_id) => {
+  const release = await mutex.acquire();
+  try {
+    const [video, created] = await Video.findOrCreate({
+      where: { title },
+      defaults: { views: 0 },
+    });
 
-    axios
-      .get(url + "/videos")
-      .then(async (response) => {
-        console.log(url);
-        console.log("VIDEOS", response.data);
+    const video_service = await VideoService.findByPk(video_service_id);
+    video.addVideoService(video_service);
 
-        const videoService = await VideoService.findOne({ where: { url } });
-        if (!videoService) {
-          console.error(`Video Service not found for URL: ${url}`);
-          return;
-        }
-
-        const titles = response.data.titles;
-        for (const title of titles) {
-          try {
-            const [video, created] = await Video.findOrCreate({
-              where: { title },
-              defaults: { title, views: 0, videoId: videoService.id },
-            });
-            video.addVideoService(videoService);
-            if (created) {
-              console.log(`New Video Added: ${video.title}`);
-            } else {
-              console.log(`Video Already Exists: ${video.title}`);
-            }
-          } catch (error) {
-            console.error(`Error adding video "${title}":`, error);
-          }
-        }
-      })
-      .catch((error) => {
-        if (error.code === "ECONNREFUSED") {
-          console.error(`Connection refused to ${url}: ${error.message}`);
-        } else {
-          console.error(`Failed to fetch video data from ${url}:`, error);
-        }
-      });
+    if (created) console.log("Video added with id:", video.id, video.title);
+    else console.log("Video already exists:", video.id, video.title);
+  } catch (error) {
+    console.error("Error adding video:", hostname);
+    throw error;
+  } finally {
+    release();
   }
-}
+};
 
 module.exports = {
   sequelize,
   Video,
   VideoService,
-  AddVideoServers,
-  InitVideoDataFromServers,
+  AddVideo,
+  AddVideoService,
 };

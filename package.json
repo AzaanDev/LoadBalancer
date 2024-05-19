@@ -10,15 +10,18 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "async-mutex": "^0.5.0",
     "axios": "^1.6.8",
     "body-parser": "^1.20.2",
     "cluster": "^0.7.7",
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",
     "express": "^4.19.2",
+    "geolib": "^3.3.4",
     "http": "^0.0.1-security",
     "http-proxy-middleware": "^3.0.0",
     "https": "^1.0.0",
+    "ping": "^0.4.4",
     "sequelize": "^6.37.3",
     "sqlite3": "^5.1.7"
   }

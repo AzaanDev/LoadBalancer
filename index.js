@@ -1,42 +1,37 @@
 const http = require("http");
 const express = require("express");
 const cors = require("cors");
-const bodyParser = require("body-parser");
-const proxyRouter = require("./routes/proxy");
-const {
-  sequelize,
-  AddVideoServers,
-  InitVideoDataFromServers,
-} = require("./models/database");
-const apiRoutes = require("./routes/api");
+const { sequelize } = require("./models/database");
 const { LoadServers } = require("./routes/servers");
+const routes = require("./routes/api");
+const { InitLoadBalancer } = require("./routes/proxy");
 
 const app = express();
-app.use(bodyParser.json());
 
-app.use(cors());
-app.use(express.static("public"));
-app.use("/api", apiRoutes);
-app.use("/ld", proxyRouter);
+const StartServer = (servers) => {
+  app.use("/ld", InitLoadBalancer(servers));
+  app.use(cors());
+  app.use(express.static("public"));
+  app.use(express.json());
+  app.use("/api", routes);
 
-sequelize
-  .sync({ force: false })
-  .then(() => {
-    console.log("Database synced with Sequelize");
-
-    try {
-      const servers = LoadServers("./config.json");
-      AddVideoServers(servers);
-      InitVideoDataFromServers(servers);
-    } catch (error) {
-      console.error("Failed to sync database:", error);
-    }
-
-    const server = http.createServer(app);
-    server.listen(8000, () => {
-      console.log("HTTP server started on port 80");
-    });
-  })
-  .catch((error) => {
-    console.error("Failed to sync database:", error);
+  const server = http.createServer(app);
+  const PORT = 8000;
+  server.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
   });
+};
+
+const Init = async () => {
+  try {
+    await sequelize.sync();
+    console.log("Database synchronized");
+    const servers = await LoadServers("./config.json");
+    console.log("Loaded Servers from config");
+    StartServer(servers);
+  } catch (error) {
+    console.error("Error synchronizing database:", error);
+  }
+};
+
+Init();

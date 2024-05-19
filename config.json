@@ -2,20 +2,20 @@
   "balancer": {
     "host": "localhost",
     "port": "80",
-    "location": ""
+    "location": "NEWY"
   },
   "servers": [
     {
       "host": "localhost",
       "port": "8081",
-      "location": "A",
+      "location": "NEWY",
       "status": true,
       "weight": 1
     },
     {
       "host": "localhost",
       "port": "8082",
-      "location": "B",
+      "location": "WASH",
       "status": true,
       "weight": 1
     }

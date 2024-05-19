@@ -13,7 +13,7 @@ document.addEventListener("DOMContentLoaded", function () {
           fetch(`/ld/video?title=${encodeURIComponent(video.title)}`, {
             method: "POST",
             headers: {
-              "Content-Type": "text",
+              "Content-Type": "application/json",
             },
             body: JSON.stringify({ title: video.title }),
           })

@@ -84,9 +84,7 @@ const RemapFrabricSites = {
 };
 
 const GetDistance = (server, client) => {
-  if (!(server in RemapFrabricSites) || !(client in StateCoordinates)) {
-    return null;
-  } else {
+  if (server in RemapFrabricSites && client in StateCoordinates) {
     const d = geolib.getDistance(
       {
         latitude: StateCoordinates[client].lat,
@@ -229,16 +227,24 @@ const InitLoadBalancer = (servers) => {
       const viable_servers = services.map((service) => {
         if (servers[service.hostname].status) return servers[service.hostname];
       });
-      viable_servers.sort((a, b) => {
-        return (
-          GetDistance(a.location, location) - GetDistance(b.location, location)
-        );
-      });
+
+      if (location in StateCoordinates) {
+        viable_servers.sort((a, b) => {
+          return (
+            GetDistance(a.location, location) -
+            GetDistance(b.location, location)
+          );
+        });
+      }
+
       const max_connections = getMaxActiveConnections(viable_servers);
       const max_avg_latency = getMaxLatencyAndChange(viable_servers);
       const scores = viable_servers.map((server, index) => {
         const hostname = server.host + ":" + server.port;
-        const geolocationScore = 1 - index / viable_servers.length;
+        let geolocationScore = 0;
+        if (location in StateCoordinates) {
+          geolocationScore = 1 - index / viable_servers.length;
+        } else geolocationScore = 1;
         const latencyScore =
           1 -
           (ServerLatencies[hostname].averageLatency +
@@ -258,6 +264,7 @@ const InitLoadBalancer = (servers) => {
       scores.sort((a, b) => b.score - a.score);
       await IncrementViewCount(video.id);
       selected = scores[0].server;
+      console.log(scores);
       CreateSession(sessionID, selected);
       return proxies[selected.host + ":" + selected.port];
     } catch (error) {

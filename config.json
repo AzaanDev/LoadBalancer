@@ -18,6 +18,13 @@
       "location": "WASH",
       "status": true,
       "weight": 1
+    },
+    {
+      "host": "localhost",
+      "port": "8083",
+      "location": "DALL",
+      "status": true,
+      "weight": 1
     }
   ]
 }

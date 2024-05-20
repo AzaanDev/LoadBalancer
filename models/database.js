@@ -58,6 +58,27 @@ const AddVideoService = async (hostname) => {
   }
 };
 
+const AddVideoToServer = async (title, hostname) => {
+  const release = await mutex.acquire();
+  try {
+    const [video, created] = await Video.findOrCreate({
+      where: { title },
+      defaults: { views: 0 },
+    });
+
+    const video_service = await VideoService.findOne({ where: { hostname } });
+    video.addVideoService(video_service);
+
+    if (created) console.log("Video added with id:", video.id, video.title);
+    else console.log("Video add to server:", video.id, video_service.hostname);
+  } catch (error) {
+    console.error("Error adding video:", hostname);
+    throw error;
+  } finally {
+    release();
+  }
+};
+
 const AddVideo = async (title, video_service_id) => {
   const release = await mutex.acquire();
   try {
@@ -79,10 +100,30 @@ const AddVideo = async (title, video_service_id) => {
   }
 };
 
+const IncrementViewCount = async (videoId) => {
+  const video = await Video.findByPk(videoId);
+  if (!video) {
+    throw new Error(`Video with id ${videoId} not found`);
+  }
+
+  const release = await mutex.acquire();
+
+  try {
+    await video.increment("views", { by: 1 });
+  } catch (error) {
+    console.error("Error incrementing view count:", error);
+    throw error;
+  } finally {
+    release();
+  }
+};
+
 module.exports = {
   sequelize,
   Video,
   VideoService,
   AddVideo,
   AddVideoService,
+  AddVideoToServer,
+  IncrementViewCount,
 };

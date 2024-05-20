@@ -1,14 +1,23 @@
 const express = require("express");
+const { v4: uuidv4 } = require("uuid");
+const cookieParser = require("cookie-parser");
 const {
   createProxyMiddleware,
   fixRequestBody,
 } = require("http-proxy-middleware");
-const { Video } = require("../models/database");
+const { Video, IncrementViewCount } = require("../models/database");
+const { ReplicaVideoToAll } = require("./servers");
 const geolib = require("geolib");
 const ping = require("ping");
 
 const router = express.Router();
 router.use(express.json());
+router.use(cookieParser());
+
+const geolocationWeight = 0.5;
+const latencyWeight = 0.2;
+const activeConnectionsWeight = 0.3;
+
 // https://gist.github.com/meiqimichelle/7727723
 const StateCoordinates = {
   AK: { lat: 61.385, lon: -152.2683 },
@@ -92,6 +101,39 @@ const GetDistance = (server, client) => {
   }
 };
 
+let Sessions = {};
+
+const CreateSession = (sessionID, server) => {
+  if (Sessions[sessionID]) {
+    Sessions[sessionID].server = server;
+    Sessions[sessionID].time = Date.now();
+  } else {
+    Sessions[sessionID] = {
+      server: server,
+      time: Date.now(),
+    };
+  }
+  Sessions[sessionID].server.connections += 1;
+};
+
+const CheckSessionTimeouts = () => {
+  let timeout = 5 * 60 * 1000; // 5 minute timeout
+  let currentime = Date.now();
+
+  Object.keys(Sessions).forEach((sessionID) => {
+    let session = Sessions[sessionID];
+    let elapsedTime = currentime - session.time;
+    if (elapsedTime > timeout) {
+      sessions[sessionID].server.connections -= 1;
+      delete sessions[sessionID];
+    }
+  });
+};
+
+const getMaxActiveConnections = (servers) => {
+  return Math.max(...servers.map((server) => server.connections));
+};
+
 const InitLoadBalancer = (servers) => {
   const proxies = {};
   for (const hostname in servers) {
@@ -105,27 +147,85 @@ const InitLoadBalancer = (servers) => {
     });
   }
 
+  const ServerLatencies = {};
+
+  const getMaxLatencyAndChange = (servers) => {
+    return Math.max(
+      ...servers.map(
+        (server) =>
+          ServerLatencies[server.host + ":" + server.port].averageLatency
+      )
+    );
+  };
+
   const PingServers = async () => {
     for (const [hostname, server] of Object.entries(servers)) {
+      if (!ServerLatencies[hostname]) {
+        ServerLatencies[hostname] = {
+          totalLatency: 0,
+          numPings: 0,
+          latencyChange: 0,
+          averageLatency: 0,
+        };
+      }
       try {
         const res = await ping.promise.probe(server.host);
         servers[hostname].responsetime = res.time;
+        ServerLatencies[hostname].totalLatency += res.time;
+        ServerLatencies[hostname].numPings++;
       } catch (error) {
         console.error(`Error pinging ${hostname}:`, error);
         servers[hostname].responsetime = -1;
         servers[hostname].status = false;
       }
     }
+
+    for (const [hostname, latencyData] of Object.entries(ServerLatencies)) {
+      const averageLatency = latencyData.totalLatency / latencyData.numPings;
+      const previousAverageLatency = ServerLatencies[hostname].averageLatency;
+
+      if (previousAverageLatency === 0)
+        ServerLatencies[hostname].latencyChange = 0;
+      else
+        ServerLatencies[hostname].latencyChange =
+          averageLatency - previousAverageLatency;
+      ServerLatencies[hostname].averageLatency = averageLatency;
+      ServerLatencies[hostname].totalLatency = 0;
+      ServerLatencies[hostname].numPings = 0;
+    }
   };
 
   PingServers();
   const interval = 15 * 1000;
   setInterval(PingServers, interval);
+  setInterval(CheckSessionTimeouts, 60 * 1000);
 
-  const GetProxy = async (title, location) => {
+  const GetProxy = async (title, location, sessionID) => {
     try {
+      if (Sessions[sessionID]) Sessions[sessionID].server.connections -= 1;
+
+      // Get Video and all Servers with that Video
       const video = await Video.findOne({ where: { title: title } });
       const services = await video.getVideoServices();
+
+      // Check if video is a good candidate for replication
+      if (
+        services.length !== Object.keys(servers).length &&
+        video.views > 1000
+      ) {
+        const ServersToReplicate = Object.entries(servers)
+          .filter(
+            ([hostname, server]) =>
+              !services.some((service) => service.hostname === hostname)
+          )
+          .map(([_, server]) => server);
+        await ReplicaVideoToAll(
+          ServersToReplicate,
+          services[0].hostname,
+          title
+        );
+      }
+
       const viable_servers = services.map((service) => {
         if (servers[service.hostname].status) return servers[service.hostname];
       });
@@ -134,7 +234,32 @@ const InitLoadBalancer = (servers) => {
           GetDistance(a.location, location) - GetDistance(b.location, location)
         );
       });
-      return proxies[viable_servers[0].host + ":" + viable_servers[0].port];
+      const max_connections = getMaxActiveConnections(viable_servers);
+      const max_avg_latency = getMaxLatencyAndChange(viable_servers);
+      const scores = viable_servers.map((server, index) => {
+        const hostname = server.host + ":" + server.port;
+        const geolocationScore = 1 - index / viable_servers.length;
+        const latencyScore =
+          1 -
+          (ServerLatencies[hostname].averageLatency +
+            ServerLatencies[hostname].latencyChange) /
+            max_avg_latency;
+        const activeConnectionsScore =
+          max_connections !== 0 ? 1 - server.connections / max_connections : 0;
+
+        const score =
+          geolocationScore * geolocationWeight +
+          latencyScore * latencyWeight +
+          activeConnectionsScore * activeConnectionsWeight;
+
+        return { server, score };
+      });
+
+      scores.sort((a, b) => b.score - a.score);
+      await IncrementViewCount(video.id);
+      selected = scores[0].server;
+      CreateSession(sessionID, selected);
+      return proxies[selected.host + ":" + selected.port];
     } catch (error) {
       console.error("Error finding server: ", error);
       return null;
@@ -144,8 +269,25 @@ const InitLoadBalancer = (servers) => {
   router.post("/video", async (req, res, next) => {
     console.log("Request IP:", req.ip);
     console.log("Body:", req.body);
-    const proxy = await GetProxy(req.body.title, req.body.location);
+    let sessionID = req.cookies["sessionID"];
+    if (!sessionID) {
+      sessionID = uuidv4();
+      res.cookie("sessionID", sessionID, { httpOnly: true });
+    }
+    const proxy = await GetProxy(req.body.title, req.body.location, sessionID);
+    res.cookie("sessionID", sessionID, { httpOnly: true });
     return proxy(req, res, next);
+  });
+
+  // Since User gets redirected to VideoService and stop communicating with load balancer, have user ping the load balancer
+  router.get("/ping", (req, res) => {
+    const sessionID = req.cookies.sessionID;
+    if (!sessionID) {
+      return res.status(400).json({ error: "SessionID is required." });
+    }
+
+    Sessions[sessionID].time = Date.now();
+    return res.status(200).json({ message: "Ping received." });
   });
 
   return router;

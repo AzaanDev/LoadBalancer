@@ -1,7 +1,11 @@
 const fs = require("fs").promises;
 const axios = require("axios");
 
-const { AddVideo, AddVideoService } = require("../models/database");
+const {
+  AddVideo,
+  AddVideoService,
+  AddVideoToServer,
+} = require("../models/database");
 
 class Server {
   constructor(id, host, port, location, status, weight) {
@@ -16,12 +20,34 @@ class Server {
   }
 }
 
+const DownloadReplica = async (hostname, url) => {
+  try {
+    const response = await axios.post(`http://${hostname}/download`, { url });
+    return response.data.url;
+  } catch (error) {
+    console.error(error);
+    return null;
+  }
+};
+
+const GetVideoFromServer = async (hostname, title) => {
+  try {
+    const response = await axios.post(`http://${hostname}/video`, { title });
+    return response.data.url;
+  } catch (error) {
+    console.error(error);
+    return null;
+  }
+};
+
 const LoadVideosFromServer = async (hostname, id) => {
   try {
-    const response = await axios.get("http://" + hostname + "/videos");
+    const response = await axios.get(`http://${hostname}/videos`);
     const titles = response.data.titles;
-    for (const title of titles) {
-      await AddVideo(title, id);
+    if (titles) {
+      for (const title of titles) {
+        await AddVideo(title, id);
+      }
     }
   } catch (error) {
     console.error(error);
@@ -56,4 +82,18 @@ const LoadServers = async (filename) => {
   }
 };
 
-module.exports = { Server, LoadServers };
+const ReplicaVideoToAll = async (servers, video_server, title) => {
+  try {
+    const url = await GetVideoFromServer(video_server, title);
+    for (const server of servers) {
+      const hostname = server.host + ":" + server.port;
+      await DownloadReplica(hostname, url);
+      await AddVideoToServer(title, hostname);
+    }
+  } catch (err) {
+    console.error("Failed to replica video:", err);
+    throw err;
+  }
+};
+
+module.exports = { Server, LoadServers, ReplicaVideoToAll };

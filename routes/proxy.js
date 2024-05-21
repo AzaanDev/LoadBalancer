@@ -14,7 +14,7 @@ const router = express.Router();
 router.use(express.json());
 router.use(cookieParser());
 
-const geolocationWeight = 0.5;
+const geolocationWeight = 0.4;
 const latencyWeight = 0.2;
 const activeConnectionsWeight = 0.3;
 
@@ -122,8 +122,8 @@ const CheckSessionTimeouts = () => {
     let session = Sessions[sessionID];
     let elapsedTime = currentime - session.time;
     if (elapsedTime > timeout) {
-      sessions[sessionID].server.connections -= 1;
-      delete sessions[sessionID];
+      Sessions[sessionID].server.connections -= 1;
+      delete Sessions[sessionID];
     }
   });
 };
@@ -264,7 +264,7 @@ const InitLoadBalancer = (servers) => {
       scores.sort((a, b) => b.score - a.score);
       await IncrementViewCount(video.id);
       selected = scores[0].server;
-      console.log(scores);
+      // console.log(scores);
       CreateSession(sessionID, selected);
       return proxies[selected.host + ":" + selected.port];
     } catch (error) {
@@ -274,8 +274,8 @@ const InitLoadBalancer = (servers) => {
   };
 
   router.post("/video", async (req, res, next) => {
-    console.log("Request IP:", req.ip);
-    console.log("Body:", req.body);
+    // console.log("Request IP:", req.ip);
+    // console.log("Body:", req.body);
     let sessionID = req.cookies["sessionID"];
     if (!sessionID) {
       sessionID = uuidv4();
